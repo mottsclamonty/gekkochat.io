@@ -1,3 +1,4 @@
+import { delay } from "@/utils/delay";
 import axios from "axios";
 
 const FMP_API_KEY = process.env.FMP_API_KEY; // Store in your `.env.local`
@@ -27,24 +28,23 @@ export async function fetchSingleEarningsCall(
   symbol: string,
   year?: number,
   quarter?: "Q1" | "Q2" | "Q3" | "Q4"
-): Promise<any> {
+): Promise<any[]> {
   try {
     const response = await fmpClient.get(`/earning_call_transcript/${symbol}`, {
       params: { year, quarter },
     });
-    console.log(
-      `Earnings call response for ${symbol}, year ${year}:`,
-      response.data
-    );
-    return response.data || [];
+    return response.data;
   } catch (error: any) {
-    console.error(
-      `Error fetching single earnings call for ${symbol}, year ${year}:`,
-      error.message
-    );
-    return [];
+    if (error.response?.status === 429) {
+      console.error("Rate limit hit while fetching transcript. Retrying...");
+      await delay(500); // Wait 1 second before retrying
+      return fetchSingleEarningsCall(symbol, year, quarter);
+    }
+    console.error("Error fetching single earnings call:", error.message);
+    throw new Error("Failed to fetch single earnings call transcript.");
   }
 }
+
 /**
  * Fetch a batch set of earnings call transcripts for a given symbol and year
  */

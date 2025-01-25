@@ -7,13 +7,22 @@ import {
   extractCompanies,
 } from "@/lib/openai";
 import { fetchSingleEarningsCall } from "@/lib/fmpClient";
+import { delay } from "@/utils/delay";
 
 export async function POST(request: Request) {
   try {
     const { question } = await request.json();
     console.log("User Question:", question);
 
-    // Step 1: Extract company stock symbols from user query
+    // Step 1: Classify the user's query as earning_call, financial_metric, or other
+    const queryType = await classifyQuery(question);
+    if (queryType === "other") {
+      const response = await rewriteInGordonGekkoStyle(question, true);
+      return NextResponse.json({ queryType, summary: response });
+    }
+    console.log("Query Type:", queryType);
+
+    // Step 2: Extract company stock symbols from user query
     const companies = await extractCompanies(question);
     if (!companies.length) {
       console.error("No companies or symbols extracted.");
@@ -24,10 +33,6 @@ export async function POST(request: Request) {
     const symbols = companies.map((company) => company.symbol);
     console.log("Extracted Symbols:", symbols);
 
-    // Step 2: Classify the user's query as earning_call, financial_metric, or other
-    const queryType = await classifyQuery(question);
-    console.log("Query Type:", queryType);
-
     let output: string;
 
     if (queryType === "earnings_call") {
@@ -37,42 +42,52 @@ export async function POST(request: Request) {
       );
       console.log("Extracted Time Info:", { year, quarter, multiple });
 
-      const transcripts = await Promise.all(
-        symbols.map(async (symbol) => {
-          console.log(`Fetching earnings call for symbol: ${symbol}`);
-          const data = await fetchSingleEarningsCall(symbol, year, quarter);
-          console.log(`Earnings call response for ${symbol}:`, data);
-          return data.length ? data[0].content : null;
-        })
-      );
+      const allCompanySummaries = []; // Array to store summaries for all companies
 
-      // Step 4: Handle case where no transcripts are found
-      const validTranscripts = transcripts.filter((t) => t);
-      if (!validTranscripts.length) {
-        const response = await rewriteInGordonGekkoStyle(
-          "No recent earnings call data is available for the companies in your query."
+      // Process each company symbol one by one with throttling
+      for (const symbol of symbols) {
+        console.log(`Fetching earnings call for symbol: ${symbol}`);
+        const data = await fetchSingleEarningsCall(symbol, year, quarter);
+        console.log(`Earnings call response for ${symbol}:`, data);
+
+        if (!data.length) {
+          console.log(`No earnings call found for symbol: ${symbol}`);
+          continue;
+        }
+
+        const transcript = data[0]?.content || "";
+        const companyName =
+          companies.find((c) => c.symbol === symbol)?.name || symbol;
+
+        console.log(`Summarizing transcript for ${companyName}`);
+        const chunkSummaries = await summarizeTranscriptInChunks(
+          transcript,
+          question,
+          companyName
         );
-        return NextResponse.json({ queryType, summary: response });
+
+        // Combine summaries for this company
+        const combinedSummary = chunkSummaries.join("\n\n");
+        allCompanySummaries.push({
+          company: companyName,
+          summary: combinedSummary,
+        });
+
+        // Delay between company processing to avoid rate limits
+        await delay(500); // 500ms between processing each company
       }
 
-      // Step 5: Summarize transcripts with context of user query
-      const chunkSummaries = await Promise.all(
-        validTranscripts.map((transcript) =>
-          summarizeTranscriptInChunks(transcript, question)
-        )
-      );
-
-      // Combine all chunk summaries into one final summary
-      const finalSummary = chunkSummaries
-        .flat()
-        .filter((summary) => summary) // Remove empty summaries
-        .join("\n\n"); // Combine summaries into a single string
+      // Combine all company summaries into a single output
+      const finalSummary = allCompanySummaries
+        .map((entry) => `**${entry.company}**: ${entry.summary}`)
+        .join("\n\n");
 
       console.log("Combined Final Summary:", finalSummary);
 
       if (!finalSummary) {
         const response = await rewriteInGordonGekkoStyle(
-          "The earnings calls had no meaningful data related to your query."
+          "The earnings calls had no meaningful data related to your query.",
+          false
         );
         return NextResponse.json({ queryType, summary: response });
       }
@@ -87,14 +102,15 @@ export async function POST(request: Request) {
     }
 
     // Step 6: Rewrite the final output in Gordon Gekko's style
-    const rewrittenOutput = await rewriteInGordonGekkoStyle(output);
+    const rewrittenOutput = await rewriteInGordonGekkoStyle(output, false);
 
     return NextResponse.json({ queryType, summary: rewrittenOutput });
   } catch (error: any) {
     console.error("Error processing request:", error.message);
 
     const errorResponse = await rewriteInGordonGekkoStyle(
-      "An error occurred while processing your request. Please try again later."
+      "An error occurred while processing your request. Please try again later.",
+      false
     );
     return NextResponse.json({ error: errorResponse }, { status: 500 });
   }

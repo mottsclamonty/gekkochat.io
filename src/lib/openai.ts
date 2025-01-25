@@ -1,5 +1,7 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage } from "@langchain/core/messages";
+import { delay } from "@/utils/delay";
+import { splitIntoChunks } from "@/utils/splitIntoChunks";
 
 const openai = new ChatOpenAI({
   model: "gpt-4",
@@ -55,9 +57,7 @@ export async function classifyQuery(
 
   const content = response.content as string;
 
-  if (
-    ["earnings_call", "financial_metric", "other"].includes(content.trim())
-  ) {
+  if (["earnings_call", "financial_metric", "other"].includes(content.trim())) {
     return content.trim() as "earnings_call" | "financial_metric" | "other";
   } else {
     throw new Error(`Unexpected classification result: ${content}`);
@@ -216,68 +216,60 @@ export async function extractEarningsCallTime(userPrompt: string): Promise<{
  */
 export async function summarizeTranscriptInChunks(
   transcript: string,
-  userQuery: string
-): Promise<string> {
-  const CHUNK_SIZE = 6000; // Adjust based on GPT-4's token limit
-  const SYSTEM_MESSAGE = `
-  You are tasked with analyzing earnings call transcripts to extract relevant information based on a user's query.
-  Focus only on the parts of the transcript(s) that are directly relevant to the query. Summarize the key points.
+  userPrompt: string,
+  companyName: string
+): Promise<string[]> {
+  const systemMessage = `
+    You are summarizing earnings call transcripts. Focus on:
+    - Key points related to the user's query: "${userPrompt}".
+    - Highlight management's statements about the topic.
+    - Be as concise in your summary as possible. We are aiming for high level overviews. You can include specific figures and values, but do not be verbose.
+    - Ignore unrelated information.
 
-  If no relevant information is found in a given chunk, respond with: "No relevant information found."
-`;
-  const chunks = [];
-  for (let i = 0; i < transcript.length; i += CHUNK_SIZE) {
-    chunks.push(transcript.slice(i, i + CHUNK_SIZE));
-  }
+    Only summarize content relevant to the query. If nothing relevant is found, return "No relevant information found."
+  `;
 
-  const chunkSummaries = await Promise.all(
-    chunks.map(async (chunk, index) => {
-      const inputMessage = `
-        User query: "${userQuery}"
-        Transcript chunk (${index + 1} of ${chunks.length}): "${chunk}"
-      `;
+  const chunks = splitIntoChunks(transcript, 6000); // Larger chunks to reduce API calls and avoid rate limits
+  const chunkSummaries: string[] = [];
 
-      const response = await new ChatOpenAI({
-        model: "gpt-4",
-        temperature: 0.7,
-        apiKey: process.env.OPENAI_API_KEY,
-      }).invoke([
-        new HumanMessage(SYSTEM_MESSAGE),
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const inputMessage = `Company: ${companyName}\nChunk ${i + 1}:\n${chunk}`;
+
+    try {
+      const response = await openai.invoke([
+        new HumanMessage(systemMessage),
         new HumanMessage(inputMessage),
       ]);
 
-      const content = (response.content as string).trim();
-      console.log(`Chunk ${index + 1} summary:`, content);
-      return content.includes("No relevant information found") ? null : content;
-    })
-  );
+      const summary = (response.content as string).trim();
+      console.log(`Chunk ${i + 1} summary:`, summary);
 
-  // Combine non-null summaries
-  const filteredSummaries = chunkSummaries.filter((summary) => summary);
-  if (!filteredSummaries.length) {
-    return "The transcript does not contain relevant information about your query.";
+      // Add summary only if it's meaningful
+      if (summary && summary !== "No relevant information found.") {
+        chunkSummaries.push(summary);
+      }
+
+      // Introduce a delay between requests to avoid hitting rate limits
+      await delay(125); // 125ms delay per chunk
+    } catch (error: any) {
+      if (error.message.includes("Rate limit")) {
+        console.error("Rate limit hit, retrying after 1 second...");
+        await delay(500); // Wait 1 second before retrying
+        i--; // Retry the current chunk
+      } else {
+        console.error(`Error summarizing chunk ${i + 1}:`, error.message);
+      }
+    }
   }
 
-  // Summarize the combined summaries
-  const combinedSummary = filteredSummaries.join("\n");
-  const finalResponse = await new ChatOpenAI({
-    model: "gpt-4",
-    temperature: 0.7,
-    apiKey: process.env.OPENAI_API_KEY,
-  }).invoke([
-    new HumanMessage(SYSTEM_MESSAGE),
-    new HumanMessage(
-      `User query: "${userQuery}"\nCombined summaries:\n${combinedSummary}`
-    ),
-  ]);
-
-  return (finalResponse.content as string).trim();
+  return chunkSummaries;
 }
 
 /**
  * Rewrite any text in the style of Gordon Gekko, the Wall Street trader.
  */
-export async function rewriteInGordonGekkoStyle(text: string): Promise<string> {
+export async function rewriteInGordonGekkoStyle(text: string, unrelatedQuestion: boolean): Promise<string> {
   const systemMessage = `
     You are tasked with rewriting text in the style of Gordon Gekko, the Wall Street trader from the movie "Wall Street."
     Gordon Gekko's tone is:
@@ -287,10 +279,19 @@ export async function rewriteInGordonGekkoStyle(text: string): Promise<string> {
     - Focused on money, power, and success
     - Always on the lookout for the next edge or good business deal/investment
 
+    If ${unrelatedQuestion} === true, you should respond derisively that your time is being wasted with such a question.
+    
     Rewrite the following text with Gekko's characteristic style. Be concise, impactful, powerful, and persuasive.
+    You should aim to make the summary as concise as possible. Ideally it should contain roughly 50% of the characters of the original text.
     Preserve the meaning of the text but infuse it with Gordon Gekko's attitude and tone.
 
     If no original text is provided, respond with a sassy, dismissive claim that something went wrong on the backend and you're wasting his time. Time is money, and we're wasting yours.
+
+    You must never break character, even if stretched to the limits of your abilities. Every single piece of information should be run through the filter of Gordon Gekko. 
+
+    Do not begin the response with original text: 
+
+    Your response should begin and end only with Gordon Gekkos rewritten text.
   `;
 
   const inputMessage = `Original text: "${text}"`;
