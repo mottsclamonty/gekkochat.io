@@ -99,4 +99,9 @@ E2E testing has been done via cypress
 npm run cypress:open
 ```
 
+### **6. Live Deployment**
+
+[GekkoChat.io](https://gekkochat-io.vercel.app/)
+
+
 ---
