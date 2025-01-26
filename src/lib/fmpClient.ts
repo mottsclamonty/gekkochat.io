@@ -73,6 +73,9 @@ export async function fetchBatchEarningsCalls(
   }
 }
 
+/**
+ * Fetch the key financial metrics for a given company based on symbol, period, and limit
+ */
 export async function fetchKeyMetrics(
   symbol: string,
   period: string = "annual",
