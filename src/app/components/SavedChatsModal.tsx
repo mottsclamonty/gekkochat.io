@@ -1,12 +1,8 @@
 "use client";
 import React from "react";
 
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card";
-import { useChat } from "@/context/ChatContext";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
+import { useChat } from "../../context/ChatContext";
 
 const SavedChatsModal = () => {
   const { loadChat, savedChats } = useChat();
@@ -20,7 +16,8 @@ const SavedChatsModal = () => {
         (chat, index, self) =>
           index ===
           self.findIndex(
-            (c) => c.name === chat.name && c.messages.length === chat.messages.length
+            (c) =>
+              c.name === chat.name && c.messages.length === chat.messages.length
           )
       );
 

@@ -6,7 +6,7 @@ import {
   ReactNode,
   useEffect,
 } from "react";
-import { firestore } from "@/lib/firebase";
+import { firestore } from "../lib/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { useSession } from "next-auth/react";
 
@@ -50,7 +50,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
 
   const fetchSavedChats = async () => {
     try {
-      const userEmail = session?.user.email;
+      const userEmail = session?.user?.email;
       if (!userEmail) return;
 
       const userDocRef = doc(firestore, "users", userEmail);
@@ -69,7 +69,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
 
   const saveNewChatToFirestore = async (newChat: Chat) => {
     try {
-      const userEmail = session?.user.email;
+      const userEmail = session?.user?.email;
       if (!userEmail) return;
 
       const userDocRef = doc(firestore, "users", userEmail);
@@ -106,7 +106,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
     try {
       if (!chatId) return;
 
-      const userEmail = session?.user.email;
+      const userEmail = session?.user?.email;
       if (!userEmail) return;
 
       const userDocRef = doc(firestore, "users", userEmail);
@@ -194,7 +194,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
   };
 
   useEffect(() => {
-    if (session?.user.email) {
+    if (session?.user?.email) {
       fetchSavedChats();
     }
   }, [session]);

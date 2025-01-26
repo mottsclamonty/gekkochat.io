@@ -1,10 +1,9 @@
 "use client";
 import React, { useState } from "react";
-import { Input } from "@/components/ui/input";
 import { ArrowRight } from "lucide-react";
-import { useChat } from "@/context/ChatContext";
 import axios from "axios";
-
+import { useChat } from "../../context/ChatContext";
+import { Input } from "./ui/input";
 const ChatInput = () => {
   const { addMessage, setQuerying, setTyping } = useChat();
   const [question, setQuestion] = useState("");

@@ -1,5 +1,4 @@
-import { DropdownMenu, DropdownMenuItem } from "@/components/ui/dropdown-menu";
-import { useChat } from "@/context/ChatContext";
+import { DropdownMenu, DropdownMenuItem } from "./ui/dropdown-menu";
 import {
   DropdownMenuContent,
   DropdownMenuTrigger,
@@ -8,6 +7,7 @@ import { signOut, useSession } from "next-auth/react";
 import Image from "next/image";
 import React from "react";
 import SavedChatsModal from "./SavedChatsModal";
+import { useChat } from "../../context/ChatContext";
 
 const UserNavMenu = () => {
   const { data: session } = useSession();

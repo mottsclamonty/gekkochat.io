@@ -16,6 +16,15 @@ export async function POST(request: Request) {
     const { question } = await request.json();
     console.log("User Question:", question);
 
+    if (!question) {
+      return NextResponse.json(
+        {
+          error: "No user input provided",
+        },
+        { status: 500 }
+      );
+    }
+
     // Step 1: Classify the user's query as earning_call, financial_metric, or other
     const queryType = await classifyQuery(question);
     if (queryType === "other") {
@@ -28,9 +37,12 @@ export async function POST(request: Request) {
     const companies = await extractCompanies(question);
     if (!companies.length) {
       console.error("No companies or symbols extracted.");
-      return NextResponse.json({
-        error: "No relevant companies were found in your query.",
-      });
+      return NextResponse.json(
+        {
+          error: "No relevant companies were found in your query.",
+        },
+        { status: 404 }
+      );
     }
     const symbols = companies.map((company) => company.symbol);
     console.log("Extracted Symbols:", symbols);
@@ -38,20 +50,15 @@ export async function POST(request: Request) {
     let output: string;
 
     if (queryType === "earnings_call") {
-      // Step 3: Extract the time information, i.e quarter year period etc
       const { year, quarter, multiple } = await extractEarningsCallTime(
         question
       );
       console.log("Extracted Time Info:", { year, quarter, multiple });
 
-      const allCompanySummaries = []; // Array to store summaries for all companies
-
-      // Process each company symbol one by one with throttling
+      const allCompanySummaries = [];
       for (const symbol of symbols) {
         console.log(`Fetching earnings call for symbol: ${symbol}`);
         const data = await fetchSingleEarningsCall(symbol, year, quarter);
-        console.log(`Earnings call response for ${symbol}:`, data);
-
         if (!data.length) {
           console.log(`No earnings call found for symbol: ${symbol}`);
           continue;
@@ -68,23 +75,18 @@ export async function POST(request: Request) {
           companyName
         );
 
-        // Combine summaries for this company
         const combinedSummary = chunkSummaries.join("\n\n");
         allCompanySummaries.push({
           company: companyName,
           summary: combinedSummary,
         });
 
-        // Delay between company processing to avoid rate limits
-        await delay(500); // 500ms between processing each company
+        await delay(500);
       }
 
-      // Combine all company summaries into a single output
       const finalSummary = allCompanySummaries
         .map((entry) => `**${entry.company}**: ${entry.summary}`)
         .join("\n\n");
-
-      console.log("Combined Final Summary:", finalSummary);
 
       if (!finalSummary) {
         const response = await rewriteInGordonGekkoStyle(
@@ -96,7 +98,6 @@ export async function POST(request: Request) {
 
       output = finalSummary;
     } else if (queryType === "financial_metric") {
-      // Step 2: Extract time information (optional for now)
       const { period = "annual", limit = 1 } = await extractFinancialMetricTime(
         question
       );
@@ -114,23 +115,18 @@ export async function POST(request: Request) {
         const companyName =
           companies.find((c) => c.symbol === symbol)?.name || symbol;
 
-        // Step 3: Parse the user's prompt for relevant metrics or overall health
         const relevantMetrics = await parseFinancialMetric(
           question,
           metricsData[0]
         );
 
         if (!relevantMetrics.length) {
-          console.log(
-            `No relevant financial metrics identified for ${companyName}`
-          );
           allMetricSummaries.push(
             `${companyName}: No relevant metrics found for your query.`
           );
           continue;
         }
 
-        // Handle "all" case for overall financial health
         if (relevantMetrics === "all") {
           const keyMetricsSummary = Object.entries(metricsData[0])
             .map(([key, value]) => `${key}: ${value}`)
@@ -143,7 +139,6 @@ export async function POST(request: Request) {
           continue;
         }
 
-        // Extract values for the specified metrics
         const metricDetails = relevantMetrics
           .map((metric) => {
             const value = metricsData[0][metric];
@@ -153,9 +148,6 @@ export async function POST(request: Request) {
           })
           .join(", ");
 
-        console.log(`Relevant Metrics for ${companyName}: ${metricDetails}`);
-
-        // Step 4: Format the response in Gordon Gekko's style
         const response = await rewriteInGordonGekkoStyle(
           `For ${companyName}, the requested metrics are: ${metricDetails}.`,
           false
@@ -164,7 +156,6 @@ export async function POST(request: Request) {
         allMetricSummaries.push(response);
       }
 
-      // Combine all company responses
       const combinedResponse = allMetricSummaries.join("\n\n");
       return NextResponse.json({ queryType, summary: combinedResponse });
     } else {
@@ -172,18 +163,18 @@ export async function POST(request: Request) {
         "The query type could not be identified. Please refine your question.";
     }
 
-    // Step 6: Rewrite the final output in Gordon Gekko's style
     const rewrittenOutput = await rewriteInGordonGekkoStyle(output, false);
 
     return NextResponse.json({ queryType, summary: rewrittenOutput });
   } catch (error: any) {
     console.error("Error processing request:", error.message);
 
-    const errorResponse = await rewriteInGordonGekkoStyle(
-      "An error occurred while processing your request. Please try again later.",
-      false
+    return NextResponse.json(
+      {
+        error: "An unexpected error occurred. Please try again later.",
+      },
+      { status: 500 }
     );
-    return NextResponse.json({ error: errorResponse }, { status: 500 });
   }
 }
 
