@@ -28,10 +28,14 @@ const ChatHistory = () => {
             isTyping={message.content === "" && message.role === "assistant"} // Show animated ellipses if content is empty
           />
         ))}
+        {isTyping && (
+          <div className="flex gap-2 mx-auto text-2xl mt-4">
+            <span className="w-2 h-2 bg-gray-500 rounded-full animate-typing-dot-1"></span>
+            <span className="w-2 h-2 bg-gray-500 rounded-full animate-typing-dot-2"></span>
+            <span className="w-2 h-2 bg-gray-500 rounded-full animate-typing-dot-3"></span>
+          </div>
+        )}
       </div>
-      {isTyping && (
-        <div className="typing-animation assistant-message">...</div>
-      )}
     </>
   );
 };
