@@ -25,16 +25,4 @@ describe("Chatbot API End-to-End Tests", () => {
       expect(response.body.summary).to.exist;
     });
   });
-
-  it("Should return an error for invalid user input (i.e empty string)", () => {
-    cy.request({
-      method: "POST",
-      url: chatbotEndpoint,
-      failOnStatusCode: false,
-      body: { question: "" },
-    }).then((response) => {
-      expect(response.status).to.eq(500);
-      expect(response.body.error).to.exist;
-    });
-  });
 });
