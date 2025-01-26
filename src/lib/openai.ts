@@ -348,7 +348,8 @@ export async function rewriteInGordonGekkoStyle(
 
     Do not begin the response with original text: 
 
-    Your response should begin and end only with Gordon Gekkos rewritten text.
+    Your response should begin and end only with Gordon Gekkos rewritten text. It should NOT begin and end with quotes. We want to 
+    give the appearance of Gordon Gekko himself directly answering
   `;
 
   const inputMessage = `Original text: "${text}"`;
@@ -365,14 +366,17 @@ export async function rewriteInGordonGekkoStyle(
 export async function parseFinancialMetric(
   userQuery: string,
   metricsData: Record<string, any>
-): Promise<string | null> {
+): Promise<string[] | "all"> {
   const availableFields = Object.keys(metricsData);
   const systemMessage = `
-    You are a financial expert. The user has asked a query about a financial metric.
-    Your task is to determine the most relevant field from the provided list of metrics
-    based on the user's query.
+    You are a financial expert. Analyze the user's query about a company's financial metrics.
+    Determine the most relevant fields from the provided metrics or whether the user is asking 
+    about the overall financial health of the company.
 
-    Respond with the exact field name ONLY. If no match is found, respond with "null".
+    Respond with:
+    - A comma-separated list of relevant field names (if specific metrics are requested).
+    - The word "all" (if the query is about the company's overall financial health).
+    - "null" if no match is found.
 
     User query: "${userQuery}"
     Available metrics: ${availableFields.join(", ")}
@@ -384,5 +388,9 @@ export async function parseFinancialMetric(
   }).invoke([new HumanMessage(systemMessage)]);
 
   const content = (response.content as string).trim();
-  return content !== "null" ? content : null;
+
+  if (content === "null") return [];
+  if (content === "all") return "all";
+
+  return content.split(",").map((field) => field.trim());
 }

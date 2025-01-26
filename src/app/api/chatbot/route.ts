@@ -114,35 +114,50 @@ export async function POST(request: Request) {
         const companyName =
           companies.find((c) => c.symbol === symbol)?.name || symbol;
 
-        // Step 3: Parse the user's prompt to find the most relevant metric
-        const relevantMetric = await parseFinancialMetric(
+        // Step 3: Parse the user's prompt for relevant metrics or overall health
+        const relevantMetrics = await parseFinancialMetric(
           question,
           metricsData[0]
         );
-        if (!relevantMetric) {
+
+        if (!relevantMetrics.length) {
           console.log(
-            `No relevant financial metric identified for ${companyName}`
+            `No relevant financial metrics identified for ${companyName}`
           );
           allMetricSummaries.push(
-            `${companyName}: No relevant metric found for your query.`
+            `${companyName}: No relevant metrics found for your query.`
           );
           continue;
         }
 
-        // Extract the metric value
-        const metricValue = metricsData[0][relevantMetric];
-        if (metricValue === undefined) {
-          allMetricSummaries.push(
-            `${companyName}: The metric "${relevantMetric}" could not be retrieved.`
+        // Handle "all" case for overall financial health
+        if (relevantMetrics === "all") {
+          const keyMetricsSummary = Object.entries(metricsData[0])
+            .map(([key, value]) => `${key}: ${value}`)
+            .join(", ");
+          const overallResponse = await rewriteInGordonGekkoStyle(
+            `For ${companyName}, here's an overview of the company's financial health: ${keyMetricsSummary}.`,
+            false
           );
+          allMetricSummaries.push(overallResponse);
           continue;
         }
 
-        console.log(`Metric: ${relevantMetric}, Value: ${metricValue}`);
+        // Extract values for the specified metrics
+        const metricDetails = relevantMetrics
+          .map((metric) => {
+            const value = metricsData[0][metric];
+            return value !== undefined
+              ? `${metric}: ${value}`
+              : `The metric "${metric}" could not be retrieved.`;
+          })
+          .join(", ");
+
+        console.log(`Relevant Metrics for ${companyName}: ${metricDetails}`);
 
         // Step 4: Format the response in Gordon Gekko's style
         const response = await rewriteInGordonGekkoStyle(
-          `For ${companyName}, the value for "${relevantMetric}" is ${metricValue}.`,
+          `For ${companyName}, the requested metrics are: ${metricDetails}.`,
           false
         );
 

@@ -120,7 +120,9 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
       const updatedMessages = [...prevMessages, newMessage];
 
       if (updatedMessages.length === 1 && message.role === "user") {
-        createNewChat(message.content, updatedMessages); // Create a new chat only for the first user message
+        return [newMessage];
+      } else if (updatedMessages.length === 2) {
+        createNewChat(updatedMessages[0].content, updatedMessages); // Create a new chat only after the first response
       } else {
         updateChatMessages(updatedMessages);
       }
