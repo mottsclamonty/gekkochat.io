@@ -6,36 +6,50 @@ import { useChat } from "@/context/ChatContext";
 import axios from "axios";
 
 const ChatInput = () => {
-  const { addMessage, updateLastMessage, setQuerying } = useChat();
+  const { addMessage, setQuerying, setTyping } = useChat();
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSend = async () => {
     if (question.trim().length === 0 || loading) return;
 
-    // Add user's message
+    // Add the user's message
+    console.log("User message sent:", question);
     addMessage({ role: "user", content: question });
 
-    // Add assistant's "Typing..." message
-    addMessage({ role: "assistant", content: "" }); // Empty string triggers the animated ellipses
     setQuerying(true);
     setLoading(true);
+    setTyping(true); // Start typing animation
 
     try {
+      // Call the chatbot API
       const { data } = await axios.post("/api/chatbot", { question });
-      updateLastMessage(data.summary || "No response available"); // Update ellipses with API response
+
+      console.log("Assistant response received:", data.summary);
+
+      // Update assistant's message with the API response
+      addMessage({
+        role: "assistant",
+        content: data.summary || "No response available",
+      });
     } catch (error) {
-      console.error("Error sending question", error);
-      updateLastMessage("An error occurred. Please try again.");
+      console.error("Error sending question to chatbot API:", error);
+
+      // Handle error response gracefully
+      addMessage({
+        role: "assistant",
+        content: "An error occurred. Please try again.",
+      });
     } finally {
       setQuerying(false);
       setLoading(false);
-      setQuestion("");
+      setTyping(false); // Stop typing animation
+      setQuestion(""); // Clear input field
     }
   };
 
   return (
-    <div className="flex items-center ">
+    <div className="flex items-center">
       <Input
         type="text"
         value={question}

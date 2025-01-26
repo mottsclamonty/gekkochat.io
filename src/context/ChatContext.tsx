@@ -1,5 +1,11 @@
 "use client";
-import { createContext, useContext, useState, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  ReactNode,
+  useEffect,
+} from "react";
 import { firestore } from "@/lib/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { useSession } from "next-auth/react";
@@ -13,17 +19,21 @@ export interface ChatMessage {
 
 export interface Chat {
   id: string;
-  name: string; // The first prompt from the user
+  name: string;
   messages: ChatMessage[];
 }
 
 export interface ChatContextType {
   messages: ChatMessage[];
+  savedChats: Chat[];
   isQuerying: boolean;
+  isTyping: boolean;
   addMessage: (message: Omit<ChatMessage, "id" | "timestamp">) => void;
   updateLastMessage: (content: string) => void;
   clearMessages: () => void;
   setQuerying: (querying: boolean) => void;
+  loadChat: (chat: Chat) => void;
+  setTyping: (typing: boolean) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -33,76 +43,83 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
 }) => {
   const { data: session } = useSession();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [savedChats, setSavedChats] = useState<Chat[]>([]);
   const [isQuerying, setIsQuerying] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
 
-  const createNewChat = async (
-    firstPromptContent: string,
-    messages: ChatMessage[]
-  ) => {
+  const fetchSavedChats = async () => {
     try {
-      const newChatId = crypto.randomUUID();
-      const newChat: Chat = {
-        id: newChatId,
-        name: firstPromptContent,
-        messages,
-      };
-
       const userEmail = session?.user.email;
-      if (!userEmail) {
-        console.error("User email is missing from session");
-        return;
-      }
-
-      const userDocRef = doc(firestore, "users", userEmail);
-      const userDoc = await getDoc(userDocRef);
-
-      if (userDoc.exists()) {
-        await updateDoc(userDocRef, {
-          chats: [...(userDoc.data()?.chats || []), newChat],
-        });
-        console.log(`New chat created with ID: ${newChatId}`);
-        setChatId(newChatId);
-      } else {
-        console.error(`User document does not exist for email: ${userEmail}`);
-      }
-    } catch (error) {
-      console.error("Error creating a new chat:", error);
-    }
-  };
-
-  const updateChatMessages = async (updatedMessages: ChatMessage[]) => {
-    try {
-      if (!chatId) {
-        console.error("No chat ID available for updating messages");
-        return;
-      }
-
-      const userEmail = session?.user.email;
-      if (!userEmail) {
-        console.error("User email is missing from session");
-        return;
-      }
+      if (!userEmail) return;
 
       const userDocRef = doc(firestore, "users", userEmail);
       const userDoc = await getDoc(userDocRef);
 
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        const updatedChats = (userData.chats || []).map(
-          (chat: Chat) =>
-            chat.id === chatId
-              ? { ...chat, messages: updatedMessages } // Update the messages array for the current chat
-              : chat // Keep other chats unchanged
+        setSavedChats(userData.chats || []);
+      } else {
+        setSavedChats([]);
+      }
+    } catch (error) {
+      console.error("Error fetching saved chats:", error);
+    }
+  };
+
+  const saveNewChatToFirestore = async (newChat: Chat) => {
+    try {
+      const userEmail = session?.user.email;
+      if (!userEmail) return;
+
+      const userDocRef = doc(firestore, "users", userEmail);
+      const userDoc = await getDoc(userDocRef);
+
+      if (userDoc.exists()) {
+        const existingChats: Chat[] = userDoc.data().chats || [];
+
+        // Check if a chat with identical messages already exists
+        const isDuplicate = existingChats.some(
+          (chat) =>
+            JSON.stringify(chat.messages) === JSON.stringify(newChat.messages)
         );
 
+        if (isDuplicate) {
+          console.log("Duplicate chat detected. Skipping save.");
+          return;
+        }
+
+        // Save the new chat if it's not a duplicate
         await updateDoc(userDocRef, {
-          chats: updatedChats,
+          chats: [...existingChats, newChat],
         });
 
-        console.log(`Messages updated for chat ID: ${chatId}`);
-      } else {
-        console.error(`User document does not exist for email: ${userEmail}`);
+        setSavedChats((prevChats) => [...prevChats, newChat]);
+        console.log("New chat saved to Firestore:", newChat);
+      }
+    } catch (error) {
+      console.error("Error saving new chat to Firestore:", error);
+    }
+  };
+
+  const updateChatMessages = async (updatedMessages: ChatMessage[]) => {
+    try {
+      if (!chatId) return;
+
+      const userEmail = session?.user.email;
+      if (!userEmail) return;
+
+      const userDocRef = doc(firestore, "users", userEmail);
+      const userDoc = await getDoc(userDocRef);
+
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const updatedChats = (userData.chats || []).map((chat: Chat) =>
+          chat.id === chatId ? { ...chat, messages: updatedMessages } : chat
+        );
+
+        await updateDoc(userDocRef, { chats: updatedChats });
+        setSavedChats(updatedChats);
       }
     } catch (error) {
       console.error("Error updating chat messages:", error);
@@ -119,12 +136,23 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
     setMessages((prevMessages) => {
       const updatedMessages = [...prevMessages, newMessage];
 
-      if (updatedMessages.length === 1 && message.role === "user") {
-        return [newMessage];
-      } else if (updatedMessages.length === 2) {
-        createNewChat(updatedMessages[0].content, updatedMessages); // Create a new chat only after the first response
+      if (chatId) {
+        // Update existing chat
+        if (updatedMessages.length >= 4) {
+          updateChatMessages(updatedMessages);
+        }
       } else {
-        updateChatMessages(updatedMessages);
+        // Create new chat if messages array reaches 4
+        if (updatedMessages.length === 4) {
+          const newChatId = crypto.randomUUID();
+          const newChat: Chat = {
+            id: newChatId,
+            name: updatedMessages[0].content, // Use the first user message as the chat name
+            messages: updatedMessages,
+          };
+          setChatId(newChatId);
+          saveNewChatToFirestore(newChat);
+        }
       }
 
       return updatedMessages;
@@ -139,7 +167,14 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
         lastMessage.content = content;
       }
 
-      updateChatMessages(updatedMessages);
+      if (chatId) {
+        const activeChat: Chat = {
+          id: chatId,
+          name: updatedMessages[0]?.content || "Untitled Chat",
+          messages: updatedMessages,
+        };
+        updateChatMessages(activeChat.messages);
+      }
 
       return updatedMessages;
     });
@@ -147,22 +182,39 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
 
   const clearMessages = () => {
     setMessages([]);
-    setChatId(null); // Reset the chat ID so the next prompt creates a new chat
+    setChatId(null);
   };
 
   const setQuerying = (querying: boolean) => {
     setIsQuerying(querying);
   };
 
+  const setTyping = (typing: boolean) => {
+    setIsTyping(typing);
+  };
+
+  useEffect(() => {
+    if (session?.user.email) {
+      fetchSavedChats();
+    }
+  }, [session]);
+
   return (
     <ChatContext.Provider
       value={{
         messages,
+        savedChats,
         isQuerying,
+        isTyping,
         addMessage,
         updateLastMessage,
         clearMessages,
         setQuerying,
+        loadChat: (chat: Chat) => {
+          setChatId(chat.id);
+          setMessages(chat.messages);
+        },
+        setTyping,
       }}
     >
       {children}

@@ -7,6 +7,7 @@ import {
 import { signOut, useSession } from "next-auth/react";
 import Image from "next/image";
 import React from "react";
+import SavedChatsModal from "./SavedChatsModal";
 
 const UserNavMenu = () => {
   const { data: session } = useSession();
@@ -33,6 +34,9 @@ const UserNavMenu = () => {
           >
             Start a new chat
           </button>
+        </DropdownMenuItem>
+        <DropdownMenuItem className="p-0">
+          <SavedChatsModal />
         </DropdownMenuItem>
         <DropdownMenuItem className="p-0">
           <button
