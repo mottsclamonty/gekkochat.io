@@ -6,7 +6,7 @@ import { splitIntoChunks } from "@/utils/splitIntoChunks";
 const openai = new ChatOpenAI({
   model: "gpt-4",
   temperature: 0,
-  apiKey: process.env.OPENAI_API_KEY, // Ensure this is set in .env.local
+  apiKey: process.env.OPENAI_API_KEY, 
 });
 
 /**
@@ -299,18 +299,16 @@ export async function summarizeTranscriptInChunks(
       const summary = (response.content as string).trim();
       console.log(`Chunk ${i + 1} summary:`, summary);
 
-      // Add summary only if it's meaningful
       if (summary && summary !== "No relevant information found.") {
         chunkSummaries.push(summary);
       }
 
-      // Introduce a delay between requests to avoid hitting rate limits
-      await delay(125); // 125ms delay per chunk
+      await delay(125); 
     } catch (error: any) {
       if (error.message.includes("Rate limit")) {
         console.error("Rate limit hit, retrying after 1 second...");
-        await delay(500); // Wait 1 second before retrying
-        i--; // Retry the current chunk
+        await delay(500); 
+        i--; // Retry the current chunk if rate limit hit
       } else {
         console.error(`Error summarizing chunk ${i + 1}:`, error.message);
       }
@@ -348,8 +346,8 @@ export async function rewriteInGordonGekkoStyle(
 
     Do not begin the response with original text: 
 
-    Your response should begin and end only with Gordon Gekkos rewritten text. It should NOT begin and end with quotes. We want to 
-    give the appearance of Gordon Gekko himself directly answering
+    Your response should begin and end only with Gordon Gekkos rewritten text. It should NEVER begin and end with quotes. We want to 
+    give the appearance of Gordon Gekko himself directly answering. Do not every under any circumstances return text enclosed with single quotes or double quotes.
   `;
 
   const inputMessage = `Original text: "${text}"`;
@@ -363,6 +361,11 @@ export async function rewriteInGordonGekkoStyle(
   return (response.content as string).trim();
 }
 
+/**
+ * Parse a given financial metric according to a user's query. 
+ * Either return 'all' if the user wants to know about overall company financial health
+ * Otherwise return an array of the relevant metrics
+ */
 export async function parseFinancialMetric(
   userQuery: string,
   metricsData: Record<string, any>

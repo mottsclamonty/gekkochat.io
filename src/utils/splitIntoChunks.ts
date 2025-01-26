@@ -1,3 +1,7 @@
+/**
+ * Helper function to split gigantic earning call transcripts into more manageable chunks
+ * This is done to avoid hitting token limits with langchain's openAI
+ */
 export function splitIntoChunks(text: string, maxChunkSize: number): string[] {
   const chunks: string[] = [];
   let currentChunk = "";

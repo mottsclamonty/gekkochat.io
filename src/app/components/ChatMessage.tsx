@@ -1,13 +1,12 @@
 "use client";
-import { useSession } from "next-auth/react";
 import Image from "next/image";
-import React from "react";
 import { Typewriter } from "react-simple-typewriter";
+import { useSession } from "next-auth/react";
 
 interface ChatMessageProps {
   sender: "user" | "assistant";
   message: string;
-  isTyping?: boolean; // New prop to indicate if the assistant is typing
+  isTyping?: boolean;
 }
 
 const ChatMessage: React.FC<ChatMessageProps> = ({
@@ -45,10 +44,10 @@ const ChatMessage: React.FC<ChatMessageProps> = ({
           }`}
         ></span>
         {isTyping ? (
-          <div className="animate-pulse text-gray-500">...</div> 
+          <div className="animate-pulse text-gray-500">...</div>
         ) : sender === "assistant" ? (
           <Typewriter
-            words={[message]} 
+            words={[message]}
             loop={1}
             typeSpeed={2}
             delaySpeed={500}

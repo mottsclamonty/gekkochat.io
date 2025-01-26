@@ -1,13 +1,9 @@
-import { DropdownMenu, DropdownMenuItem } from "./ui/dropdown-menu";
-import {
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@radix-ui/react-dropdown-menu";
-import { signOut, useSession } from "next-auth/react";
 import Image from "next/image";
-import React from "react";
+import { DropdownMenu, DropdownMenuItem } from "./ui/dropdown-menu";
+import { DropdownMenuContent, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import SavedChatsModal from "./SavedChatsModal";
 import { useChat } from "../../context/ChatContext";
+import { signOut, useSession } from "next-auth/react";
 
 const UserNavMenu = () => {
   const { data: session } = useSession();

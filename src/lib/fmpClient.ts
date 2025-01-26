@@ -1,10 +1,10 @@
 import { delay } from "@/utils/delay";
 import axios from "axios";
 
-const FMP_API_KEY = process.env.FMP_API_KEY; // Store in your `.env.local`
-
+const FMP_API_KEY = process.env.FMP_API_KEY;
+const BASE_URL = "https://financialmodelingprep.com/api/v3";
 const fmpClient = axios.create({
-  baseURL: "https://financialmodelingprep.com/api/v3",
+  baseURL: BASE_URL,
   params: { apikey: FMP_API_KEY },
 });
 
@@ -14,7 +14,7 @@ const fmpClient = axios.create({
 export async function fetchCompanyList(): Promise<any[]> {
   try {
     const response = await fmpClient.get("/stock/list");
-    return response.data; // Returns an array of companies
+    return response.data;
   } catch (error: any) {
     console.error("Error fetching company list:", error.message);
     throw new Error("Failed to fetch company list from FMP API");
@@ -37,7 +37,7 @@ export async function fetchSingleEarningsCall(
   } catch (error: any) {
     if (error.response?.status === 429) {
       console.error("Rate limit hit while fetching transcript. Retrying...");
-      await delay(500); // Wait 1 second before retrying
+      await delay(500);
       return fetchSingleEarningsCall(symbol, year, quarter);
     }
     console.error("Error fetching single earnings call:", error.message);
@@ -82,12 +82,9 @@ export async function fetchKeyMetrics(
   limit: number = 1
 ): Promise<any[]> {
   try {
-    const response = await axios.get(
-      `https://financialmodelingprep.com/api/v3/key-metrics/${symbol}`,
-      {
-        params: { period, limit, apikey: process.env.FMP_API_KEY },
-      }
-    );
+    const response = await fmpClient.get(`/key-metrics/${symbol}`, {
+      params: { period, limit },
+    });
     return response.data;
   } catch (error: any) {
     console.error(`Error fetching key metrics for ${symbol}:`, error.message);

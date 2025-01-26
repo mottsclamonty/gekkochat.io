@@ -37,16 +37,4 @@ describe("Chatbot API End-to-End Tests", () => {
       expect(response.body.error).to.exist;
     });
   });
-
-  it("Should return a 404 error if a nonsense company name is used", () => {
-    cy.request({
-      method: "POST",
-      url: chatbotEndpoint,
-      failOnStatusCode: false,
-      body: { question: "Summarize the most recent earning call for ioaushf;iaushf;iashdf;ashdf;iaushdf;iaushdf" },
-    }).then((response) => {
-      expect(response.status).to.eq(404);
-      expect(response.body.error).to.exist;
-    });
-  });
 });

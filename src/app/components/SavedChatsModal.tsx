@@ -1,6 +1,4 @@
 "use client";
-import React from "react";
-
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
 import { useChat } from "../../context/ChatContext";
 
@@ -11,7 +9,7 @@ const SavedChatsModal = () => {
     if (savedChats.length === 0) {
       return <span className="text-left p-2">You have no saved chats!</span>;
     } else {
-      // Remove duplicates based on name and messages array length
+      // Remove duplicates based on name and messages array length - hacky fix for issue with temp duplicate chat creation
       const uniqueChats = savedChats.filter(
         (chat, index, self) =>
           index ===
@@ -23,7 +21,7 @@ const SavedChatsModal = () => {
 
       return uniqueChats.map((chat) => (
         <button
-          key={chat.id} // Ensure each chat has a unique key
+          key={chat.id}
           type="button"
           onClick={() => {
             loadChat(chat);

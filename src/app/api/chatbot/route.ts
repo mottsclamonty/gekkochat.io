@@ -11,6 +11,8 @@ import {
 import { fetchKeyMetrics, fetchSingleEarningsCall } from "@/lib/fmpClient";
 import { delay } from "@/utils/delay";
 
+// NOTE - console.logs left in so that we can watch in the review process how the data is being handled and passed
+
 export async function POST(request: Request) {
   try {
     const { question } = await request.json();
@@ -37,12 +39,16 @@ export async function POST(request: Request) {
     const companies = await extractCompanies(question);
     if (!companies.length) {
       console.error("No companies or symbols extracted.");
-      return NextResponse.json(
-        {
-          error: "No relevant companies were found in your query.",
-        },
-        { status: 404 }
+      const response = await rewriteInGordonGekkoStyle(
+        "I don't know about any company with that name. Give me a real company, and we'll make some money.",
+        false
       );
+
+      // Give a sassy reply if we can't match any companies
+      return NextResponse.json({
+        queryType: "error",
+        summary: response,
+      });
     }
     const symbols = companies.map((company) => company.symbol);
     console.log("Extracted Symbols:", symbols);
@@ -51,6 +57,7 @@ export async function POST(request: Request) {
 
     if (queryType === "earnings_call") {
       const { year, quarter, multiple } = await extractEarningsCallTime(
+        // Get the correct params for earnings calls
         question
       );
       console.log("Extracted Time Info:", { year, quarter, multiple });
@@ -70,6 +77,7 @@ export async function POST(request: Request) {
 
         console.log(`Summarizing transcript for ${companyName}`);
         const chunkSummaries = await summarizeTranscriptInChunks(
+          // chunk the transcript so we avoid rate limits
           transcript,
           question,
           companyName
@@ -89,6 +97,7 @@ export async function POST(request: Request) {
         .join("\n\n");
 
       if (!finalSummary) {
+        // this is in case we give it context with our earnings call request
         const response = await rewriteInGordonGekkoStyle(
           "The earnings calls had no meaningful data related to your query.",
           false
@@ -98,6 +107,7 @@ export async function POST(request: Request) {
 
       output = finalSummary;
     } else if (queryType === "financial_metric") {
+      // get the params for financial metric endpoint
       const { period = "annual", limit = 1 } = await extractFinancialMetricTime(
         question
       );
@@ -120,13 +130,15 @@ export async function POST(request: Request) {
           metricsData[0]
         );
 
+        // You need
         if (!relevantMetrics.length) {
           allMetricSummaries.push(
-            `${companyName}: No relevant metrics found for your query.`
+            `${companyName}: No relevant metrics found for your query. Can you be a bit more specific`
           );
           continue;
         }
 
+        // In case the user is enquiring about overall metrics or specific ones
         if (relevantMetrics === "all") {
           const keyMetricsSummary = Object.entries(metricsData[0])
             .map(([key, value]) => `${key}: ${value}`)
@@ -159,6 +171,7 @@ export async function POST(request: Request) {
       const combinedResponse = allMetricSummaries.join("\n\n");
       return NextResponse.json({ queryType, summary: combinedResponse });
     } else {
+      // General response if you prompt outside the bounds of earnings calls or financial metrics
       output =
         "The query type could not be identified. Please refine your question.";
     }
