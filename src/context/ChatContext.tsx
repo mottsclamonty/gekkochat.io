@@ -1,11 +1,20 @@
 "use client";
 import { createContext, useContext, useState, ReactNode } from "react";
+import { firestore } from "@/lib/firebase";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { useSession } from "next-auth/react";
 
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+}
+
+export interface Chat {
+  id: string;
+  name: string; // The first prompt from the user
+  messages: ChatMessage[];
 }
 
 export interface ChatContextType {
@@ -22,18 +31,102 @@ const ChatContext = createContext<ChatContextType | undefined>(undefined);
 export const ChatProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
+  const { data: session } = useSession();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isQuerying, setIsQuerying] = useState(false);
+  const [chatId, setChatId] = useState<string | null>(null);
+
+  const createNewChat = async (
+    firstPromptContent: string,
+    messages: ChatMessage[]
+  ) => {
+    try {
+      const newChatId = crypto.randomUUID();
+      const newChat: Chat = {
+        id: newChatId,
+        name: firstPromptContent,
+        messages,
+      };
+
+      const userEmail = session?.user.email;
+      if (!userEmail) {
+        console.error("User email is missing from session");
+        return;
+      }
+
+      const userDocRef = doc(firestore, "users", userEmail);
+      const userDoc = await getDoc(userDocRef);
+
+      if (userDoc.exists()) {
+        await updateDoc(userDocRef, {
+          chats: [...(userDoc.data()?.chats || []), newChat],
+        });
+        console.log(`New chat created with ID: ${newChatId}`);
+        setChatId(newChatId);
+      } else {
+        console.error(`User document does not exist for email: ${userEmail}`);
+      }
+    } catch (error) {
+      console.error("Error creating a new chat:", error);
+    }
+  };
+
+  const updateChatMessages = async (updatedMessages: ChatMessage[]) => {
+    try {
+      if (!chatId) {
+        console.error("No chat ID available for updating messages");
+        return;
+      }
+
+      const userEmail = session?.user.email;
+      if (!userEmail) {
+        console.error("User email is missing from session");
+        return;
+      }
+
+      const userDocRef = doc(firestore, "users", userEmail);
+      const userDoc = await getDoc(userDocRef);
+
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const updatedChats = (userData.chats || []).map(
+          (chat: Chat) =>
+            chat.id === chatId
+              ? { ...chat, messages: updatedMessages } // Update the messages array for the current chat
+              : chat // Keep other chats unchanged
+        );
+
+        await updateDoc(userDocRef, {
+          chats: updatedChats,
+        });
+
+        console.log(`Messages updated for chat ID: ${chatId}`);
+      } else {
+        console.error(`User document does not exist for email: ${userEmail}`);
+      }
+    } catch (error) {
+      console.error("Error updating chat messages:", error);
+    }
+  };
 
   const addMessage = (message: Omit<ChatMessage, "id" | "timestamp">) => {
-    setMessages((prevMessages) => [
-      ...prevMessages,
-      {
-        id: crypto.randomUUID(),
-        timestamp: new Date(),
-        ...message,
-      },
-    ]);
+    const newMessage: ChatMessage = {
+      id: crypto.randomUUID(),
+      timestamp: new Date(),
+      ...message,
+    };
+
+    setMessages((prevMessages) => {
+      const updatedMessages = [...prevMessages, newMessage];
+
+      if (updatedMessages.length === 1 && message.role === "user") {
+        createNewChat(message.content, updatedMessages); // Create a new chat only for the first user message
+      } else {
+        updateChatMessages(updatedMessages);
+      }
+
+      return updatedMessages;
+    });
   };
 
   const updateLastMessage = (content: string) => {
@@ -43,12 +136,16 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
       if (lastMessage?.role === "assistant") {
         lastMessage.content = content;
       }
+
+      updateChatMessages(updatedMessages);
+
       return updatedMessages;
     });
   };
 
   const clearMessages = () => {
     setMessages([]);
+    setChatId(null); // Reset the chat ID so the next prompt creates a new chat
   };
 
   const setQuerying = (querying: boolean) => {
@@ -57,7 +154,14 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
 
   return (
     <ChatContext.Provider
-      value={{ messages, isQuerying, addMessage, updateLastMessage, clearMessages, setQuerying }}
+      value={{
+        messages,
+        isQuerying,
+        addMessage,
+        updateLastMessage,
+        clearMessages,
+        setQuerying,
+      }}
     >
       {children}
     </ChatContext.Provider>
