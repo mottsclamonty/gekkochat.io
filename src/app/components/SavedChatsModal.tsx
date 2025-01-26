@@ -1,6 +1,7 @@
 "use client";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
 import { useChat } from "../../context/ChatContext";
+import { ArrowLeft } from "lucide-react";
 
 const SavedChatsModal = () => {
   const { loadChat, savedChats } = useChat();
@@ -36,7 +37,8 @@ const SavedChatsModal = () => {
 
   return (
     <HoverCard>
-      <HoverCardTrigger className="w-full p-2 bg-slate-500 hover:bg-slate-700 text-white transition cursor-pointer text-center">
+      <HoverCardTrigger className="flex items-center justify-center gap-2 w-full p-2 bg-slate-500 hover:bg-slate-700 text-white transition cursor-pointer text-center">
+        <ArrowLeft height={14} width={14} className="text-white" />
         Saved chats
       </HoverCardTrigger>
       <HoverCardContent
