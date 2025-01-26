@@ -8,7 +8,11 @@ import {
   parseFinancialMetric,
   extractFinancialMetricTime,
 } from "@/lib/openai";
-import { fetchKeyMetrics, fetchSingleEarningsCall } from "@/lib/fmpClient";
+import {
+  fetchBatchEarningsCalls,
+  fetchKeyMetrics,
+  fetchSingleEarningsCall,
+} from "@/lib/fmpClient";
 import { delay } from "@/utils/delay";
 
 // NOTE - console.logs left in so that we can watch in the review process how the data is being handled and passed
@@ -56,48 +60,62 @@ export async function POST(request: Request) {
     let output: string;
 
     if (queryType === "earnings_call") {
+      // Extract year, quarter, and multiple
       const { year, quarter, multiple } = await extractEarningsCallTime(
-        // Get the correct params for earnings calls
         question
       );
-      console.log("Extracted Time Info:", { year, quarter, multiple });
+      const effectiveYear = !year ? 2024 : year; // Default to 2024 for year
+      console.log("Extracted Time Info:", {
+        year: effectiveYear,
+        quarter,
+        multiple,
+      });
 
       const allCompanySummaries = [];
+
       for (const symbol of symbols) {
-        console.log(`Fetching earnings call for symbol: ${symbol}`);
-        const data = await fetchSingleEarningsCall(symbol, year, quarter);
-        if (!data.length) {
-          console.log(`No earnings call found for symbol: ${symbol}`);
+        console.log(`Fetching earnings calls for symbol: ${symbol}`);
+
+        // Fetch batch or single earnings calls
+        const earningsCalls = multiple
+          ? await fetchBatchEarningsCalls(symbol, effectiveYear)
+          : await fetchSingleEarningsCall(symbol, year, quarter);
+
+        if (!earningsCalls.length) {
+          console.log(`No earnings calls found for symbol: ${symbol}`);
           continue;
         }
 
-        const transcript = data[0]?.content || "";
         const companyName =
           companies.find((c) => c.symbol === symbol)?.name || symbol;
 
-        console.log(`Summarizing transcript for ${companyName}`);
-        const chunkSummaries = await summarizeTranscriptInChunks(
-          // chunk the transcript so we avoid rate limits
-          transcript,
-          question,
-          companyName
+        console.log(
+          `Processing ${earningsCalls.length} earnings calls for ${companyName}`
         );
+        const combinedSummaries = [];
 
-        const combinedSummary = chunkSummaries.join("\n\n");
-        allCompanySummaries.push({
-          company: companyName,
-          summary: combinedSummary,
-        });
+        for (const call of earningsCalls) {
+          const transcript = call.content || "";
+          console.log(`Summarizing transcript for ${companyName}`);
+          const chunkSummaries = await summarizeTranscriptInChunks(
+            transcript,
+            question,
+            companyName
+          );
+          combinedSummaries.push(chunkSummaries.join("\n\n"));
 
-        await delay(500);
+          // Delay to avoid rate limits
+          await delay(500);
+        }
+
+        // Combine all summaries for the company
+        const companySummary = combinedSummaries.join("\n\n");
+        allCompanySummaries.push(`**${companyName}**: ${companySummary}`);
       }
 
-      const finalSummary = allCompanySummaries
-        .map((entry) => `**${entry.company}**: ${entry.summary}`)
-        .join("\n\n");
+      const finalSummary = allCompanySummaries.join("\n\n");
 
       if (!finalSummary) {
-        // this is in case we give it context with our earnings call request
         const response = await rewriteInGordonGekkoStyle(
           "The earnings calls had no meaningful data related to your query.",
           false
@@ -181,13 +199,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ queryType, summary: rewrittenOutput });
   } catch (error: any) {
     console.error("Error processing request:", error.message);
-
-    return NextResponse.json(
-      {
-        error: "An unexpected error occurred. Please try again later.",
-      },
-      { status: 500 }
+    const gekkoError = await rewriteInGordonGekkoStyle(
+      error.message as string,
+      false
     );
+    return NextResponse.json({ queryType: "error", summary: gekkoError });
   }
 }
 

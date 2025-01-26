@@ -2,7 +2,7 @@ import { delay } from "@/utils/delay";
 import axios from "axios";
 
 const FMP_API_KEY = process.env.FMP_API_KEY;
-const BASE_URL = "https://financialmodelingprep.com/api/v3";
+const BASE_URL = "https://financialmodelingprep.com/api";
 const fmpClient = axios.create({
   baseURL: BASE_URL,
   params: { apikey: FMP_API_KEY },
@@ -13,7 +13,7 @@ const fmpClient = axios.create({
  */
 export async function fetchCompanyList(): Promise<any[]> {
   try {
-    const response = await fmpClient.get("/stock/list");
+    const response = await fmpClient.get("/v3/stock/list");
     return response.data;
   } catch (error: any) {
     console.error("Error fetching company list:", error.message);
@@ -30,7 +30,7 @@ export async function fetchSingleEarningsCall(
   quarter?: "Q1" | "Q2" | "Q3" | "Q4"
 ): Promise<any[]> {
   try {
-    const response = await fmpClient.get(`/earning_call_transcript/${symbol}`, {
+    const response = await fmpClient.get(`/v3/earning_call_transcript/${symbol}`, {
       params: { year, quarter },
     });
     return response.data;
@@ -54,7 +54,7 @@ export async function fetchBatchEarningsCalls(
 ): Promise<any[]> {
   try {
     const response = await fmpClient.get(
-      `/batch_earning_call_transcript/${symbol}`,
+      `/v4/batch_earning_call_transcript/${symbol}`,
       {
         params: { year },
       }
@@ -82,7 +82,7 @@ export async function fetchKeyMetrics(
   limit: number = 1
 ): Promise<any[]> {
   try {
-    const response = await fmpClient.get(`/key-metrics/${symbol}`, {
+    const response = await fmpClient.get(`/v3/key-metrics/${symbol}`, {
       params: { period, limit },
     });
     return response.data;
