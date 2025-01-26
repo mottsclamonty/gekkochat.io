@@ -194,7 +194,7 @@ export async function POST(request: Request) {
 /**
  * Simple health check route for serverless API
  */
-export async function GET(request: Request) {
+export async function GET() {
   return NextResponse.json(
     {
       message: "Route is working!",
