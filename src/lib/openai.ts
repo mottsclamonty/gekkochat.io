@@ -158,7 +158,7 @@ export async function extractCompanies(
 }
 
 /**
- * Extract time-related information (year, quarter, number of periods, etc.) from the user's query.
+ * Extract time-related information (year, quarter, number of periods, etc.) from the user's earning call transcript query.
  */
 export async function extractEarningsCallTime(userPrompt: string): Promise<{
   year?: number;
@@ -208,6 +208,60 @@ export async function extractEarningsCallTime(userPrompt: string): Promise<{
       response.content
     );
     return { year: undefined, quarter: undefined, multiple: false };
+  }
+}
+
+/**
+ * Extract time-related information (number of periods, limit) from the user's financial metric query.
+ */
+export async function extractFinancialMetricTime(userPrompt: string): Promise<{
+  period?: "annual" | "quarter";
+  limit?: number;
+}> {
+  const systemMessage = `
+    Analyze the user's query and extract relevant information for financial metrics.
+    Return:
+    - period: If the user specifies or implies "annual" or "quarterly", return "annual" or "quarter".
+    - limit: If the user specifies or implies the number of periods, return the number (default to 5 if not explicitly mentioned).
+
+    Example 1:
+    User prompt: "Show me the last 3 annual metrics for Tesla."
+    Response: { "period": "annual", "limit": 3 }
+
+    Example 2:
+    User prompt: "I want quarterly metrics for Microsoft."
+    Response: { "period": "quarter", "limit": 5 }
+
+    Example 3:
+    User prompt: "Give me financial metrics for Apple."
+    Response: { "period": "annual", "limit": 5 } (default to annual and 5)
+
+    Example 4:
+    User prompt: "Show financial details for the last 10 quarters for Meta."
+    Response: { "period": "quarter", "limit": 10 }
+
+    Respond with a JSON object.
+  `;
+
+  const inputMessage = `User prompt: "${userPrompt}"`;
+
+  const response = await new ChatOpenAI({
+    model: "gpt-4",
+    temperature: 0,
+    apiKey: process.env.OPENAI_API_KEY,
+  }).invoke([new HumanMessage(systemMessage), new HumanMessage(inputMessage)]);
+
+  const content = response.content as string;
+  console.log("extract financial metric time content", content);
+
+  try {
+    return JSON.parse(content);
+  } catch (error) {
+    console.error(
+      "Failed to parse time extraction response:",
+      response.content
+    );
+    return { period: "annual", limit: 5 }; // Default to "annual" and 5 periods if parsing fails
   }
 }
 
@@ -269,7 +323,10 @@ export async function summarizeTranscriptInChunks(
 /**
  * Rewrite any text in the style of Gordon Gekko, the Wall Street trader.
  */
-export async function rewriteInGordonGekkoStyle(text: string, unrelatedQuestion: boolean): Promise<string> {
+export async function rewriteInGordonGekkoStyle(
+  text: string,
+  unrelatedQuestion: boolean
+): Promise<string> {
   const systemMessage = `
     You are tasked with rewriting text in the style of Gordon Gekko, the Wall Street trader from the movie "Wall Street."
     Gordon Gekko's tone is:
@@ -303,4 +360,29 @@ export async function rewriteInGordonGekkoStyle(text: string, unrelatedQuestion:
   }).invoke([new HumanMessage(systemMessage), new HumanMessage(inputMessage)]);
 
   return (response.content as string).trim();
+}
+
+export async function parseFinancialMetric(
+  userQuery: string,
+  metricsData: Record<string, any>
+): Promise<string | null> {
+  const availableFields = Object.keys(metricsData);
+  const systemMessage = `
+    You are a financial expert. The user has asked a query about a financial metric.
+    Your task is to determine the most relevant field from the provided list of metrics
+    based on the user's query.
+
+    Respond with the exact field name ONLY. If no match is found, respond with "null".
+
+    User query: "${userQuery}"
+    Available metrics: ${availableFields.join(", ")}
+  `;
+
+  const response = await new ChatOpenAI({
+    model: "gpt-4",
+    temperature: 0,
+  }).invoke([new HumanMessage(systemMessage)]);
+
+  const content = (response.content as string).trim();
+  return content !== "null" ? content : null;
 }

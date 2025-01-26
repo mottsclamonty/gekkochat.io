@@ -5,8 +5,10 @@ import {
   summarizeTranscriptInChunks,
   rewriteInGordonGekkoStyle,
   extractCompanies,
+  parseFinancialMetric,
+  extractFinancialMetricTime,
 } from "@/lib/openai";
-import { fetchSingleEarningsCall } from "@/lib/fmpClient";
+import { fetchKeyMetrics, fetchSingleEarningsCall } from "@/lib/fmpClient";
 import { delay } from "@/utils/delay";
 
 export async function POST(request: Request) {
@@ -94,8 +96,62 @@ export async function POST(request: Request) {
 
       output = finalSummary;
     } else if (queryType === "financial_metric") {
-      output =
-        "Financial metrics functionality has not been implemented in this version.";
+      // Step 2: Extract time information (optional for now)
+      const { period = "annual", limit = 1 } = await extractFinancialMetricTime(
+        question
+      );
+
+      const allMetricSummaries = [];
+
+      for (const symbol of symbols) {
+        console.log(`Fetching financial metrics for symbol: ${symbol}`);
+        const metricsData = await fetchKeyMetrics(symbol, period, limit);
+        if (!metricsData.length) {
+          console.log(`No financial metrics found for symbol: ${symbol}`);
+          continue;
+        }
+
+        const companyName =
+          companies.find((c) => c.symbol === symbol)?.name || symbol;
+
+        // Step 3: Parse the user's prompt to find the most relevant metric
+        const relevantMetric = await parseFinancialMetric(
+          question,
+          metricsData[0]
+        );
+        if (!relevantMetric) {
+          console.log(
+            `No relevant financial metric identified for ${companyName}`
+          );
+          allMetricSummaries.push(
+            `${companyName}: No relevant metric found for your query.`
+          );
+          continue;
+        }
+
+        // Extract the metric value
+        const metricValue = metricsData[0][relevantMetric];
+        if (metricValue === undefined) {
+          allMetricSummaries.push(
+            `${companyName}: The metric "${relevantMetric}" could not be retrieved.`
+          );
+          continue;
+        }
+
+        console.log(`Metric: ${relevantMetric}, Value: ${metricValue}`);
+
+        // Step 4: Format the response in Gordon Gekko's style
+        const response = await rewriteInGordonGekkoStyle(
+          `For ${companyName}, the value for "${relevantMetric}" is ${metricValue}.`,
+          false
+        );
+
+        allMetricSummaries.push(response);
+      }
+
+      // Combine all company responses
+      const combinedResponse = allMetricSummaries.join("\n\n");
+      return NextResponse.json({ queryType, summary: combinedResponse });
     } else {
       output =
         "The query type could not be identified. Please refine your question.";

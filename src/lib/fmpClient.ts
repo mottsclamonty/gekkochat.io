@@ -72,3 +72,22 @@ export async function fetchBatchEarningsCalls(
     return [];
   }
 }
+
+export async function fetchKeyMetrics(
+  symbol: string,
+  period: string = "annual",
+  limit: number = 1
+): Promise<any[]> {
+  try {
+    const response = await axios.get(
+      `https://financialmodelingprep.com/api/v3/key-metrics/${symbol}`,
+      {
+        params: { period, limit, apikey: process.env.FMP_API_KEY },
+      }
+    );
+    return response.data;
+  } catch (error: any) {
+    console.error(`Error fetching key metrics for ${symbol}:`, error.message);
+    return [];
+  }
+}
