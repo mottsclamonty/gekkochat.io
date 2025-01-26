@@ -148,7 +148,6 @@ export async function POST(request: Request) {
           metricsData[0]
         );
 
-        // You need
         if (!relevantMetrics.length) {
           allMetricSummaries.push(
             `${companyName}: No relevant metrics found for your query. Can you be a bit more specific`
