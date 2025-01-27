@@ -1,31 +1,36 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from "next/server"; // Used to handle server responses
 import {
-  classifyQuery,
-  extractEarningsCallTime,
-  summarizeTranscriptInChunks,
-  rewriteInGordonGekkoStyle,
-  extractCompanies,
-  determineTargetEndpoint,
-  summarizeFinancialMetrics,
-  answerGenericPrompt,
+  classifyQuery, // Determines the type of query (e.g., earnings call, financial metric, etc.)
+  extractEarningsCallTime, // Extracts year, quarter, and other time-related details from the query
+  summarizeTranscriptInChunks, // Summarizes transcripts by splitting them into chunks
+  rewriteInGordonGekkoStyle, // Rewrites responses in a "Gordon Gekko" tone if required
+  extractCompanies, // Extracts company symbols and names from the user's query
+  determineTargetEndpoint, // Determines which financial endpoint to fetch data from
+  summarizeFinancialMetrics, // Summarizes financial metrics using OpenAI
+  answerGenericPrompt, // Handles general queries unrelated to financial data
 } from "@/lib/openai";
 import {
-  fetchBalanceSheet,
-  fetchBatchEarningsCalls,
-  fetchCashFlowStatement,
-  fetchIncomeStatement,
-  fetchKeyMetrics,
-  fetchSingleEarningsCall,
+  fetchBalanceSheet, // Fetches balance sheet data
+  fetchBatchEarningsCalls, // Fetches multiple earnings call transcripts
+  fetchCashFlowStatement, // Fetches cash flow statement data
+  fetchIncomeStatement, // Fetches income statement data
+  fetchKeyMetrics, // Fetches key financial metrics
+  fetchSingleEarningsCall, // Fetches a single earnings call transcript
 } from "@/lib/fmpClient";
-import { delay } from "@/utils/delay";
+import { delay } from "@/utils/delay"; // Utility to add delays to avoid API rate limits
 
-// NOTE - console.logs left in so that we can watch in the review process how the data is being handled and passed
+// NOTE: Console logs are left intentionally for debugging purposes during the review process
 
+/**
+ * POST route to handle user queries related to financial data or earnings calls.
+ */
 export async function POST(request: Request) {
   try {
+    // Extract user question and "Gordon Gekko" tone preference from the request body
     const { question, isGekko } = await request.json();
     console.log("User Question:", question);
 
+    // If no question is provided, return a default response
     if (!question) {
       let response = "You need to ask me a question";
       if (isGekko) {
@@ -36,20 +41,20 @@ export async function POST(request: Request) {
       });
     }
 
-    // Step 1: Classify the user's query as earning_call, financial_metric, or other
+    // Step 1: Classify the user's query type
     const queryType = await classifyQuery(question);
     if (queryType === "other") {
       let response = "";
       if (isGekko) {
-        response = await rewriteInGordonGekkoStyle(question, true);
+        response = await rewriteInGordonGekkoStyle(question, true); // Rewrite query in "Gordon Gekko" style
       } else {
-        response = await answerGenericPrompt(question);
+        response = await answerGenericPrompt(question); // Handle general questions
       }
       return NextResponse.json({ queryType, summary: response });
     }
     console.log("Query Type:", queryType);
 
-    // Step 2: Extract company stock symbols from user query
+    // Step 2: Extract companies or stock symbols from the query
     const companies = await extractCompanies(question);
     if (!companies.length) {
       console.error("No companies or symbols extracted.");
@@ -62,7 +67,7 @@ export async function POST(request: Request) {
         );
       }
 
-      // Give a sassy reply if we can't match any companies
+      // Return an error if no companies are found
       return NextResponse.json({
         queryType: "error",
         summary: response,
@@ -74,11 +79,11 @@ export async function POST(request: Request) {
     let output: string = "";
 
     if (queryType === "earnings_call") {
-      // Extract year, quarter, and multiple
+      // Step 3: Handle earnings call queries
       const { year, quarter, multiple } = await extractEarningsCallTime(
         question
       );
-      const effectiveYear = !year ? 2024 : year; // Default to 2024 for year
+      const effectiveYear = !year ? 2024 : year; // Default to 2024 if the year is not specified
       console.log("Extracted Time Info:", {
         year: effectiveYear,
         quarter,
@@ -90,7 +95,7 @@ export async function POST(request: Request) {
       for (const symbol of symbols) {
         console.log(`Fetching earnings calls for symbol: ${symbol}`);
 
-        // Fetch batch or single earnings calls
+        // Fetch earnings calls (batch or single) based on query details
         const earningsCalls = multiple
           ? await fetchBatchEarningsCalls(symbol, effectiveYear)
           : await fetchSingleEarningsCall(symbol, year, quarter);
@@ -118,11 +123,11 @@ export async function POST(request: Request) {
           );
           combinedSummaries.push(chunkSummaries.join("\n\n"));
 
-          // Delay to avoid rate limits
+          // Add delay to avoid hitting API rate limits
           await delay(500);
         }
 
-        // Combine all summaries for the company
+        // Combine all summaries for the current company
         const companySummary = combinedSummaries.join("\n\n");
         allCompanySummaries.push(`**${companyName}**: ${companySummary}`);
       }
@@ -141,7 +146,7 @@ export async function POST(request: Request) {
 
       output = finalSummary;
     } else if (queryType === "financial_metric") {
-      // Determine the target endpoint and metric
+      // Step 4: Handle financial metric queries
       const { metric, endpoint } = await determineTargetEndpoint(question);
       console.log(`Determined metric: "${metric}" and endpoint: "${endpoint}"`);
 
@@ -154,10 +159,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ queryType: "error", summary: response });
       }
 
-      // Log the identified endpoint for debugging
       console.log(`Fetching data from ${endpoint} for metric: ${metric}`);
 
-      // Fetch data from the determined endpoint
+      // Fetch data from the specified financial endpoint
       let data: any[] = [];
       for (const symbol of symbols) {
         try {
@@ -180,7 +184,7 @@ export async function POST(request: Request) {
             continue;
           }
 
-          // Use OpenAI to summarize the data in the context of the user's question
+          // Summarize the financial metrics using OpenAI
           const summary = await summarizeFinancialMetrics(
             question,
             data,
@@ -201,7 +205,7 @@ export async function POST(request: Request) {
         }
       }
 
-      // If no data was returned for any symbol, return a graceful error
+      // If no data was found for any symbol, return an error message
       let response =
         "I couldn't find the financial data you were looking for. Try refining your question.";
       if (isGekko) {
@@ -209,7 +213,7 @@ export async function POST(request: Request) {
       }
       return NextResponse.json({ queryType: "error", summary: response });
     } else {
-      // General response if you prompt outside the bounds of earnings calls or financial metrics
+      // Step 5: Handle unrecognized queries
       output =
         "The query type could not be identified. Please refine your question.";
     }
@@ -220,6 +224,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ queryType, summary: output });
   } catch (error: any) {
     console.error("Error processing request:", error.message);
+
+    // Return an error summary rewritten in "Gordon Gekko" style
     const gekkoError = await rewriteInGordonGekkoStyle(
       error.message as string,
       false
@@ -229,12 +235,12 @@ export async function POST(request: Request) {
 }
 
 /**
- * Simple health check route for serverless API
+ * Simple health check route for serverless API.
  */
 export async function GET() {
   return NextResponse.json(
     {
-      message: "Route is working!",
+      message: "Route is working!", // Response message to indicate the route is functioning
     },
     { status: 200 }
   );

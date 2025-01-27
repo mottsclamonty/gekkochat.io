@@ -5,6 +5,9 @@ import { firestore } from "@/lib/firebase";
 import { v4 as uuidv4 } from "uuid";
 import { NextAuthOptions } from "next-auth";
 
+/**
+ * Have to export this instead of defining in route.ts to get past a vercel deployment issue
+ */
 export const authOptions: NextAuthOptions = {
   providers: [
     GitHubProvider({

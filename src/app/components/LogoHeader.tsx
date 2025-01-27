@@ -1,4 +1,4 @@
-import { Switch } from "@/components/ui/switch";
+import { Switch } from "@/app/components/ui/switch";
 import UserNavMenu from "./UserNavMenu";
 import { Label } from "./ui/label";
 import { useChat } from "@/context/ChatContext";
@@ -16,7 +16,11 @@ const LogoHeader = () => {
           checked={isGekko}
           onCheckedChange={toggleGekkoStyle}
         />
-        <Label htmlFor="gekko-style">{isGekko ? 'Responses are set to Gekko' : 'Responses are set to Normal'}</Label>
+        <Label htmlFor="gekko-style">
+          {isGekko
+            ? "Responses are set to Gekko"
+            : "Responses are set to Normal"}
+        </Label>
       </div>
       <UserNavMenu />
     </section>
