@@ -2,11 +2,17 @@ import { ChatOpenAI } from "@langchain/openai";
 import { HumanMessage } from "@langchain/core/messages";
 import { delay } from "@/utils/delay";
 import { splitIntoChunks } from "@/utils/splitIntoChunks";
+import {
+  balanceSheetFields,
+  cashflowStatementFields,
+  incomeStatementFields,
+  keyMetricsFields,
+} from "@/data/financialMetrics.data";
 
 const openai = new ChatOpenAI({
   model: "gpt-4",
   temperature: 0,
-  apiKey: process.env.OPENAI_API_KEY, 
+  apiKey: process.env.OPENAI_API_KEY,
 });
 
 /**
@@ -281,6 +287,9 @@ export async function summarizeTranscriptInChunks(
     - Ignore unrelated information.
 
     Only summarize content relevant to the query. If nothing relevant is found, return "No relevant information found."
+    Ensure that you summary is detailed and concise as possible. 
+    Ensure that the summary addresses the user's query in the context of the provided data. 
+    Do not include any irrelevant information.
   `;
 
   const chunks = splitIntoChunks(transcript, 6000); // Larger chunks to reduce API calls and avoid rate limits
@@ -303,11 +312,11 @@ export async function summarizeTranscriptInChunks(
         chunkSummaries.push(summary);
       }
 
-      await delay(125); 
+      await delay(125);
     } catch (error: any) {
       if (error.message.includes("Rate limit")) {
         console.error("Rate limit hit, retrying after 1 second...");
-        await delay(500); 
+        await delay(500);
         i--; // Retry the current chunk if rate limit hit
       } else {
         console.error(`Error summarizing chunk ${i + 1}:`, error.message);
@@ -362,7 +371,28 @@ export async function rewriteInGordonGekkoStyle(
 }
 
 /**
- * Parse a given financial metric according to a user's query. 
+ * Simple function to answer a generic 'other' queryType prompt in the style of a financial analyst.
+ * Only will be used in the case of a generic prompt with isGekko === false
+ */
+export async function answerGenericPrompt(text: string): Promise<string> {
+  const systemMessage = `
+    You are an expert in financial analysis expert. You are tasked with answering a user's prompt in the style of a normal
+    financial analyst.
+  `;
+
+  const inputMessage = `User prompt: "${text}"`;
+
+  const response = await new ChatOpenAI({
+    model: "gpt-4",
+    temperature: 0.8,
+    apiKey: process.env.OPENAI_API_KEY,
+  }).invoke([new HumanMessage(systemMessage), new HumanMessage(inputMessage)]);
+
+  return (response.content as string).trim();
+}
+
+/**
+ * Parse a given financial metric according to a user's query.
  * Either return 'all' if the user wants to know about overall company financial health
  * Otherwise return an array of the relevant metrics
  */
@@ -396,4 +426,102 @@ export async function parseFinancialMetric(
   if (content === "all") return "all";
 
   return content.split(",").map((field) => field.trim());
+}
+
+/**
+ * Determine which financial endpoint should be hit according to a given metric in a user prompt
+ * Only 4 potential endpoints were included:
+ * 1. Income statement
+ * 2. Balance sheet statement
+ * 3. Cashflow statement
+ * 4. Key metrics
+ */
+export async function determineTargetEndpoint(
+  userQuery: string
+): Promise<{ metric: string | null; endpoint: string | null }> {
+  const systemMessage = `
+    You are a financial expert. Analyze the user's query about a company's financial metrics.
+    Your goal is to determine the most relevant financial metric and the corresponding endpoint 
+    based on the provided dictionary categories.
+
+    Respond with:
+    - The metric name (e.g., "revenue").
+    - The category (one of "income_statement", "balance_sheet", "cashflow_statement", "key_metrics").
+
+    If you cannot determine a match, respond with:
+    {
+      "metric": null,
+      "endpoint": null
+    }
+
+    User query: "${userQuery}"
+
+    Financial metrics categories:
+    - income_statement: ${Object.keys(incomeStatementFields).join(", ")}
+    - balance_sheet: ${Object.keys(balanceSheetFields).join(", ")}
+    - cashflow_statement: ${Object.keys(cashflowStatementFields).join(", ")}
+    - key_metrics: ${Object.keys(keyMetricsFields).join(", ")}
+  `;
+
+  try {
+    const response = await new ChatOpenAI({
+      model: "gpt-4",
+      temperature: 0,
+    }).invoke([new HumanMessage(systemMessage)]);
+
+    const content = (response.content as string).trim();
+
+    const parsed = JSON.parse(content);
+
+    if (
+      parsed &&
+      typeof parsed.metric === "string" &&
+      typeof parsed.endpoint === "string"
+    ) {
+      return { metric: parsed.metric, endpoint: parsed.endpoint };
+    }
+  } catch (error: any) {
+    console.error("Error determining target endpoint:", error.message);
+  }
+
+  return { metric: null, endpoint: null }; // Default fallback
+}
+
+/**
+ * Summarize the financial metrics for a company over either a single year or multiple (or a generic timeframe)
+ */
+export async function summarizeFinancialMetrics(
+  userQuery: string,
+  data: Record<string, any>[],
+  metric: string
+): Promise<string> {
+  // Extract necessary info for the chatGPT summary prompt
+  const extractedMetrics = data.map((entry) => ({
+    date: entry.date || "Unknown date",
+    value: entry[metric],
+  }));
+
+  const systemMessage = `
+    You are a financial analyst. You have been provided with a user's question 
+    and financial data spanning multiple years. Your job is to analyze the data 
+    and provide a concise, human-readable summary that addresses the user's query 
+    in the context of the specific metric requested.
+
+    - User Question: "${userQuery}"
+    - Metric: "${metric}"
+    - Financial Data:
+    ${extractedMetrics
+      .map((entry) => `Date: ${entry.date}, Value: ${entry.value || "N/A"}`)
+      .join("\n")}
+    
+    Respond with a detailed and concise summary that addresses the user's query 
+    in the context of the provided data. Do not include any irrelevant information.
+  `;
+
+  const response = await new ChatOpenAI({
+    model: "gpt-4",
+    temperature: 0,
+  }).invoke([new HumanMessage(systemMessage)]);
+
+  return (response.content as string).trim();
 }

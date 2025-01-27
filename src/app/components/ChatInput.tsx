@@ -6,28 +6,22 @@ import { useChat } from "../../context/ChatContext";
 import axios from "axios";
 
 const ChatInput = () => {
-  const { addMessage, setQuerying, setTyping } = useChat();
+  const { addMessage, setQuerying, setTyping, isGekko } = useChat();
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSend = async () => {
     if (question.trim().length === 0 || loading) return;
 
-    // Add the user's message
-    console.log("User message sent:", question);
     addMessage({ role: "user", content: question });
 
     setQuerying(true);
     setLoading(true);
-    setTyping(true); // Start typing animation
+    setTyping(true);
 
     try {
-      // Call the chatbot API
-      const { data } = await axios.post("/api/chatbot", { question });
+      const { data } = await axios.post("/api/chatbot", { question, isGekko });
 
-      console.log("Assistant response received:", data.summary);
-
-      // Update assistant's message with the API response
       addMessage({
         role: "assistant",
         content: data.summary || "No response available",
@@ -35,7 +29,6 @@ const ChatInput = () => {
     } catch (error) {
       console.error("Error sending question to chatbot API:", error);
 
-      // Handle error response gracefully
       addMessage({
         role: "assistant",
         content: "An error occurred. Please try again.",
@@ -43,8 +36,8 @@ const ChatInput = () => {
     } finally {
       setQuerying(false);
       setLoading(false);
-      setTyping(false); // Stop typing animation
-      setQuestion(""); // Clear input field
+      setTyping(false); 
+      setQuestion(""); 
     }
   };
 

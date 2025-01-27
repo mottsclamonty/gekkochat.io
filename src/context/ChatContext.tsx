@@ -28,12 +28,14 @@ export interface ChatContextType {
   savedChats: Chat[];
   isQuerying: boolean;
   isTyping: boolean;
+  isGekko: boolean;
   addMessage: (message: Omit<ChatMessage, "id" | "timestamp">) => void;
   updateLastMessage: (content: string) => void;
   clearMessages: () => void;
   setQuerying: (querying: boolean) => void;
   loadChat: (chat: Chat) => void;
   setTyping: (typing: boolean) => void;
+  toggleGekkoStyle: () => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -47,6 +49,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
   const [isQuerying, setIsQuerying] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
   const [isTyping, setIsTyping] = useState(false);
+  const [isGekko, setIsGekko] = useState(true);
 
   const fetchSavedChats = async () => {
     try {
@@ -85,7 +88,6 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
         );
 
         if (isDuplicate) {
-          console.log("Duplicate chat detected. Skipping save.");
           return;
         }
 
@@ -95,7 +97,6 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
         });
 
         setSavedChats((prevChats) => [...prevChats, newChat]);
-        console.log("New chat saved to Firestore:", newChat);
       }
     } catch (error) {
       console.error("Error saving new chat to Firestore:", error);
@@ -193,6 +194,10 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
     setIsTyping(typing);
   };
 
+  const toggleGekkoStyle = () => {
+    setIsGekko((prev) => !prev);
+  };
+
   useEffect(() => {
     if (session?.user?.email) {
       fetchSavedChats();
@@ -206,6 +211,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
         savedChats,
         isQuerying,
         isTyping,
+        isGekko,
         addMessage,
         updateLastMessage,
         clearMessages,
@@ -215,6 +221,7 @@ export const ChatProvider: React.FC<{ children: ReactNode }> = ({
           setMessages(chat.messages);
         },
         setTyping,
+        toggleGekkoStyle,
       }}
     >
       {children}

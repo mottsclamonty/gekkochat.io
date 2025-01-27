@@ -30,9 +30,12 @@ export async function fetchSingleEarningsCall(
   quarter?: "Q1" | "Q2" | "Q3" | "Q4"
 ): Promise<any[]> {
   try {
-    const response = await fmpClient.get(`/v3/earning_call_transcript/${symbol}`, {
-      params: { year, quarter },
-    });
+    const response = await fmpClient.get(
+      `/v3/earning_call_transcript/${symbol}`,
+      {
+        params: { year, quarter },
+      }
+    );
     return response.data;
   } catch (error: any) {
     if (error.response?.status === 429) {
@@ -74,12 +77,81 @@ export async function fetchBatchEarningsCalls(
 }
 
 /**
+ * Fetch the income statement for a given company based on symbol and period
+ */
+export async function fetchIncomeStatement(
+  symbol: string,
+  period: string = "annual",
+  limit?: number
+): Promise<any[]> {
+  try {
+    const response = await fmpClient.get(`/v3/income-statement/${symbol}`, {
+      params: { period, limit },
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error(
+      `Error fetching income statement for ${symbol}:`,
+      error.message
+    );
+    return [];
+  }
+}
+
+/**
+ * Fetch the balance sheet statement for a given company based on symbol and period
+ */
+export async function fetchBalanceSheet(
+  symbol: string,
+  period: string = "annual",
+  limit?: number
+): Promise<any[]> {
+  try {
+    const response = await fmpClient.get(
+      `/v3/balance-sheet-statement/${symbol}`,
+      {
+        params: { period, limit },
+      }
+    );
+    return response.data;
+  } catch (error: any) {
+    console.error(
+      `Error fetching balance sheet statement for ${symbol}:`,
+      error.message
+    );
+    return [];
+  }
+}
+
+/**
+ * Fetch the cash flow statement for a given company based on symbol and period
+ */
+export async function fetchCashFlowStatement(
+  symbol: string,
+  period: string = "annual",
+  limit?: number
+): Promise<any[]> {
+  try {
+    const response = await fmpClient.get(`/v3/cash-flow-statement/${symbol}`, {
+      params: { period, limit },
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error(
+      `Error fetching cash flow statement for ${symbol}:`,
+      error.message
+    );
+    return [];
+  }
+}
+
+/**
  * Fetch the key financial metrics for a given company based on symbol, period, and limit
  */
 export async function fetchKeyMetrics(
   symbol: string,
   period: string = "annual",
-  limit: number = 1
+  limit?: number
 ): Promise<any[]> {
   try {
     const response = await fmpClient.get(`/v3/key-metrics/${symbol}`, {
