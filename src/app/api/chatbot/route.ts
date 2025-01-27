@@ -161,7 +161,7 @@ export async function POST(request: Request) {
       console.log(`Fetching data from ${endpoint} for metric: "${metric}"`);
 
       let data: any[] = [];
-      let allSummaries: string[] = [];
+      const allSummaries: string[] = [];
 
       for (const symbol of symbols) {
         try {
