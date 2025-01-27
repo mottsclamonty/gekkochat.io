@@ -129,7 +129,7 @@ export async function POST(request: Request) {
 
         // Combine all summaries for the current company
         const companySummary = combinedSummaries.join("\n\n");
-        allCompanySummaries.push(`**${companyName}**: ${companySummary}`);
+        allCompanySummaries.push(`${companySummary}`);
       }
 
       const finalSummary = allCompanySummaries.join("\n\n");
@@ -146,7 +146,6 @@ export async function POST(request: Request) {
 
       output = finalSummary;
     } else if (queryType === "financial_metric") {
-      // Step 4: Handle financial metric queries
       const { metric, endpoint } = await determineTargetEndpoint(question);
       console.log(`Determined metric: "${metric}" and endpoint: "${endpoint}"`);
 
@@ -159,10 +158,11 @@ export async function POST(request: Request) {
         return NextResponse.json({ queryType: "error", summary: response });
       }
 
-      console.log(`Fetching data from ${endpoint} for metric: ${metric}`);
+      console.log(`Fetching data from ${endpoint} for metric: "${metric}"`);
 
-      // Fetch data from the specified financial endpoint
       let data: any[] = [];
+      let allSummaries: string[] = [];
+
       for (const symbol of symbols) {
         try {
           if (endpoint === "key_metrics") {
@@ -175,7 +175,10 @@ export async function POST(request: Request) {
             data = await fetchCashFlowStatement(symbol, "annual");
           }
 
-          console.log(`Fetched data for ${symbol}:`, data);
+          console.log(
+            `Fetched data for ${symbol}:`,
+            JSON.stringify(data, null, 2)
+          );
 
           if (!data.length) {
             console.error(
@@ -184,19 +187,12 @@ export async function POST(request: Request) {
             continue;
           }
 
-          // Summarize the financial metrics using OpenAI
           const summary = await summarizeFinancialMetrics(
             question,
             data,
             metric
           );
-
-          let response = summary;
-          if (isGekko) {
-            response = await rewriteInGordonGekkoStyle(response, false);
-          }
-
-          return NextResponse.json({ queryType, summary: response });
+          allSummaries.push(`${summary}`);
         } catch (error: any) {
           console.error(
             `Error fetching data from ${endpoint} for ${symbol}:`,
@@ -205,7 +201,14 @@ export async function POST(request: Request) {
         }
       }
 
-      // If no data was found for any symbol, return an error message
+      if (allSummaries.length > 0) {
+        let response = allSummaries.join("\n\n");
+        if (isGekko) {
+          response = await rewriteInGordonGekkoStyle(response, false);
+        }
+        return NextResponse.json({ queryType, summary: response });
+      }
+
       let response =
         "I couldn't find the financial data you were looking for. Try refining your question.";
       if (isGekko) {

@@ -343,7 +343,7 @@ export async function rewriteInGordonGekkoStyle(
     - Focused on money, power, and success
     - Always on the lookout for the next edge or good business deal/investment
 
-    If ${unrelatedQuestion} === true, you should respond derisively that your time is being wasted with such a question.
+    If ${unrelatedQuestion} === true, you should respond derisively that your time is being wasted with such a question before answering or commenting on the text to the best of your ability.
     
     Rewrite the following text with Gekko's characteristic style. Be concise, impactful, powerful, and persuasive.
     You should aim to make the summary as concise as possible. Ideally it should contain roughly 50% of the characters of the original text.
@@ -389,43 +389,6 @@ export async function answerGenericPrompt(text: string): Promise<string> {
   }).invoke([new HumanMessage(systemMessage), new HumanMessage(inputMessage)]);
 
   return (response.content as string).trim();
-}
-
-/**
- * Parse a given financial metric according to a user's query.
- * Either return 'all' if the user wants to know about overall company financial health
- * Otherwise return an array of the relevant metrics
- */
-export async function parseFinancialMetric(
-  userQuery: string,
-  metricsData: Record<string, any>
-): Promise<string[] | "all"> {
-  const availableFields = Object.keys(metricsData);
-  const systemMessage = `
-    You are a financial expert. Analyze the user's query about a company's financial metrics.
-    Determine the most relevant fields from the provided metrics or whether the user is asking 
-    about the overall financial health of the company.
-
-    Respond with:
-    - A comma-separated list of relevant field names (if specific metrics are requested).
-    - The word "all" (if the query is about the company's overall financial health).
-    - "null" if no match is found.
-
-    User query: "${userQuery}"
-    Available metrics: ${availableFields.join(", ")}
-  `;
-
-  const response = await new ChatOpenAI({
-    model: "gpt-4",
-    temperature: 0,
-  }).invoke([new HumanMessage(systemMessage)]);
-
-  const content = (response.content as string).trim();
-
-  if (content === "null") return [];
-  if (content === "all") return "all";
-
-  return content.split(",").map((field) => field.trim());
 }
 
 /**
@@ -488,40 +451,80 @@ export async function determineTargetEndpoint(
 }
 
 /**
- * Summarize the financial metrics for a company over either a single year or multiple (or a generic timeframe)
+ * Summarize the financial metrics for a company over either a single year or multiple years.
  */
 export async function summarizeFinancialMetrics(
   userQuery: string,
   data: Record<string, any>[],
   metric: string
 ): Promise<string> {
-  // Extract necessary info for the chatGPT summary prompt
+  if (!data || data.length === 0) {
+    return `I'm sorry, but no financial data is available to summarize.`;
+  }
+
+  // Step 1: Extract available fields
+  const availableFields = Object.keys(data[0]);
+  console.log(`Available fields: ${availableFields.join(", ")}`);
+
+  // Step 2: Determine the most relevant field for the user's metric using OpenAI
+  const fieldDeterminationMessage = `
+    You are a financial data expert. A user has asked for a financial metric, 
+    but the field names in the provided data may not exactly match the user's query.
+
+    - User Question: "${userQuery}"
+    - Metric Requested: "${metric}"
+    - Available Fields: ${availableFields.join(", ")}
+
+    Determine which field from the available fields is most relevant to the user's requested metric. 
+    Respond with the exact name of the matching field, without any quotation marks. Do not under any circumstance enclose the field in quotation marks. 
+    If no field is relevant, respond with "null".
+  `;
+
+  const fieldResponse = await new ChatOpenAI({
+    model: "gpt-4",
+    temperature: 0,
+  }).invoke([new HumanMessage(fieldDeterminationMessage)]);
+
+  const determinedField = (fieldResponse.content as string).trim();
+  console.log(`Determined field: "${determinedField}"`);
+
+  if (
+    determinedField === "null" ||
+    !availableFields.includes(determinedField)
+  ) {
+    return `I'm sorry, but the metric "${metric}" could not be matched to any available fields in the data.`;
+  }
+
+  // Step 3: Extract data for the determined field
   const extractedMetrics = data.map((entry) => ({
     date: entry.date || "Unknown date",
-    value: entry[metric],
+    value: entry[determinedField] ?? "N/A",
   }));
+  console.log(`Extracted metrics for "${determinedField}":`, extractedMetrics);
 
-  const systemMessage = `
+  // Step 4: Generate a summary using OpenAI
+  const summaryMessage = `
     You are a financial analyst. You have been provided with a user's question 
     and financial data spanning multiple years. Your job is to analyze the data 
     and provide a concise, human-readable summary that addresses the user's query 
     in the context of the specific metric requested.
 
     - User Question: "${userQuery}"
-    - Metric: "${metric}"
+    - Metric: "${determinedField}"
     - Financial Data:
     ${extractedMetrics
-      .map((entry) => `Date: ${entry.date}, Value: ${entry.value || "N/A"}`)
+      .map((entry) => `Date: ${entry.date}, Value: ${entry.value}`)
       .join("\n")}
     
     Respond with a detailed and concise summary that addresses the user's query 
-    in the context of the provided data. Do not include any irrelevant information.
+    in the context of the provided data. If the data is missing or incomplete, 
+    explicitly mention it but provide any relevant context based on the available data.
   `;
 
-  const response = await new ChatOpenAI({
+  const summaryResponse = await new ChatOpenAI({
     model: "gpt-4",
     temperature: 0,
-  }).invoke([new HumanMessage(systemMessage)]);
+  }).invoke([new HumanMessage(summaryMessage)]);
 
-  return (response.content as string).trim();
+  return (summaryResponse.content as string).trim();
 }

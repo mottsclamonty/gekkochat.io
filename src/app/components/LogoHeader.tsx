@@ -16,11 +16,7 @@ const LogoHeader = () => {
           checked={isGekko}
           onCheckedChange={toggleGekkoStyle}
         />
-        <Label htmlFor="gekko-style">
-          {isGekko
-            ? "Responses are set to Gekko"
-            : "Responses are set to Normal"}
-        </Label>
+        <Label htmlFor="gekko-style">{isGekko ? "Gekko" : "Normal"}</Label>
       </div>
       <UserNavMenu />
     </section>
